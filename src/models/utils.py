@@ -205,6 +205,90 @@ class PositionEncodingSine(nn.Module):
         return self.pe[:, :, :x.size(2), :x.size(3)]
 
 
+class ScaleAdaptivePositionEncoding(nn.Module):
+    """Scale-adaptive sinusoidal position encoding.
+
+    Estimates the relative scale ratio between two feature maps and modulates
+    position encodings accordingly. When two images have a large scale difference,
+    the same physical region occupies different pixel extents. By adjusting
+    PE frequencies based on estimated scale, the cross-attention can better
+    associate features across scales.
+
+    The modulation is learned rather than hand-crafted: a small network predicts
+    per-channel scaling factors conditioned on the estimated log-scale ratio,
+    which multiplicatively adjust the base sinusoidal PE.
+    """
+
+    def __init__(self, d_model, max_shape=(100, 100)):
+        super().__init__()
+        self.d_model = d_model
+        self.max_shape = max_shape
+
+        pe = torch.zeros((d_model, *max_shape))
+        y_position = torch.ones(max_shape).cumsum(0).float().unsqueeze(0)
+        x_position = torch.ones(max_shape).cumsum(1).float().unsqueeze(0)
+        div_term = torch.exp(
+            torch.arange(0, d_model // 2, 2).float()
+            * (-math.log(10000.0) / d_model // 2)
+        )
+        div_term = div_term[:, None, None]
+        pe[0::4, :, :] = torch.sin(x_position * div_term)
+        pe[1::4, :, :] = torch.cos(x_position * div_term)
+        pe[2::4, :, :] = torch.sin(y_position * div_term)
+        pe[3::4, :, :] = torch.cos(y_position * div_term)
+        self.register_buffer('pe', pe.unsqueeze(0), persistent=False)
+
+        self.scale_net = nn.Sequential(
+            nn.AdaptiveAvgPool2d(1),
+            nn.Flatten(),
+            nn.Linear(d_model, d_model // 4),
+            nn.ReLU(inplace=True),
+            nn.Linear(d_model // 4, 1),
+        )
+
+        self.scale_mod_hidden = nn.Linear(1, d_model // 4)
+        self.scale_mod_relu = nn.ReLU(inplace=True)
+        self.scale_mod_out = nn.Linear(d_model // 4, d_model)
+
+        nn.init.zeros_(self.scale_mod_out.weight)
+        nn.init.zeros_(self.scale_mod_out.bias)
+
+    def scale_modulation(self, x):
+        return self.scale_mod_out(self.scale_mod_relu(self.scale_mod_hidden(x)))
+
+    def estimate_scale(self, feat1, feat2):
+        """Estimate log-scale ratio between two feature maps."""
+        s1 = self.scale_net(feat1)
+        s2 = self.scale_net(feat2)
+        return s2 - s1
+
+    def forward(self, feat1, feat2):
+        """
+        Args:
+            feat1: [N, C, H1, W1]
+            feat2: [N, C, H2, W2]
+        Returns:
+            pe1: [N, C, H1, W1]
+            pe2: [N, C, H2, W2]
+            log_scale: [N, 1] estimated log-scale ratio
+        """
+        H1, W1 = feat1.shape[2:]
+        H2, W2 = feat2.shape[2:]
+
+        base_pe1 = self.pe[:, :, :H1, :W1].expand(feat1.shape[0], -1, -1, -1)
+        base_pe2 = self.pe[:, :, :H2, :W2].expand(feat2.shape[0], -1, -1, -1)
+
+        log_scale = self.estimate_scale(feat1, feat2)
+
+        mod1 = self.scale_modulation(-log_scale)
+        mod2 = self.scale_modulation(log_scale)
+
+        pe1 = base_pe1 * (1.0 + mod1[:, :, None, None])
+        pe2 = base_pe2 * (1.0 + mod2[:, :, None, None])
+
+        return pe1, pe2, log_scale
+
+
 class PositionEmbeddingSine(nn.Module):
     """This is a more standard version of the position embedding, very similar
     to the one used by the Attention is all you need paper, generalized to work

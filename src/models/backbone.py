@@ -10,6 +10,7 @@
 import numpy as np
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import torchvision.models as models
 from einops.einops import rearrange
 from timm.models.layers import to_2tuple
@@ -172,3 +173,124 @@ class ResnetEncoder(nn.Module):
             x = self.layer4(x)
 
         return x
+
+
+class MultiScaleResnetEncoder(nn.Module):
+    """ResNet encoder outputting multi-scale features from layer2/3/4.
+
+    Unlike ResnetEncoder which outputs a single scale, this encoder
+    provides a feature hierarchy for the Feature Pyramid Network,
+    enabling cross-scale feature alignment.
+    """
+
+    def __init__(self, cfg):
+        super().__init__()
+        self.cfg = cfg
+
+        resnets = {
+            18: models.resnet18,
+            34: models.resnet34,
+            50: models.resnet50,
+            101: models.resnet101,
+            152: models.resnet152,
+        }
+        encoder = resnets[cfg.BACKBONE.NUM_LAYERS](True)
+
+        self.layer0 = nn.Sequential(encoder.conv1, encoder.bn1, encoder.relu)
+        self.layer1 = nn.Sequential(encoder.maxpool, encoder.layer1)
+        self.layer2 = encoder.layer2
+        self.layer3 = encoder.layer3
+        self.layer4 = encoder.layer4
+        del encoder
+
+        if cfg.BACKBONE.NUM_LAYERS > 34:
+            self.layer_channels = {'layer2': 512, 'layer3': 1024, 'layer4': 2048}
+        else:
+            self.layer_channels = {'layer2': 128, 'layer3': 256, 'layer4': 512}
+
+    def forward(self, input_image):
+        """
+        Args:
+            input_image: [N, H, W, 3]
+        Returns:
+            dict of multi-scale features:
+              'layer2': [N, C2, H/8,  W/8]   (stride 8)
+              'layer3': [N, C3, H/16, W/16]  (stride 16)
+              'layer4': [N, C4, H/32, W/32]  (stride 32)
+        """
+        x = input_image.permute(0, 3, 1, 2).contiguous()
+        if self.cfg.NORM_INPUT:
+            x = (x - 0.45) / 0.225
+
+        x = self.layer0(x)
+        x = self.layer1(x)
+        c3 = self.layer2(x)
+        c4 = self.layer3(c3)
+        c5 = self.layer4(c4)
+
+        return {'layer2': c3, 'layer3': c4, 'layer4': c5}
+
+
+class FeaturePyramidNetwork(nn.Module):
+    """Feature Pyramid Network with top-down pathway and lateral connections.
+
+    Fuses multi-scale backbone features into a unified representation at
+    stride-16 resolution. The top-down pathway propagates strong semantic
+    features from deeper layers to shallower layers, while lateral connections
+    preserve spatial precision from higher-resolution features.
+    """
+
+    def __init__(self, in_channels_list, out_channels):
+        """
+        Args:
+            in_channels_list: channel dims ordered [stride8, stride16, stride32]
+            out_channels: output channel dimension (d_model)
+        """
+        super().__init__()
+
+        self.lateral_convs = nn.ModuleList([
+            nn.Conv2d(in_ch, out_channels, 1) for in_ch in in_channels_list
+        ])
+
+        self.output_convs = nn.ModuleList([
+            nn.Sequential(
+                nn.Conv2d(out_channels, out_channels, 3, padding=1),
+                nn.GroupNorm(32, out_channels),
+                nn.ReLU(inplace=True),
+            )
+            for _ in in_channels_list
+        ])
+
+        self.fusion = nn.Sequential(
+            nn.Conv2d(out_channels * len(in_channels_list), out_channels, 1),
+            nn.GroupNorm(32, out_channels),
+            nn.ReLU(inplace=True),
+        )
+
+    def forward(self, features):
+        """
+        Args:
+            features: list of tensors [stride8_feat, stride16_feat, stride32_feat]
+        Returns:
+            fused: [N, out_channels, H/16, W/16]
+        """
+        laterals = [conv(f) for conv, f in zip(self.lateral_convs, features)]
+
+        for i in range(len(laterals) - 1, 0, -1):
+            laterals[i - 1] = laterals[i - 1] + F.interpolate(
+                laterals[i], size=laterals[i - 1].shape[2:],
+                mode='bilinear', align_corners=False,
+            )
+
+        outputs = [conv(lat) for conv, lat in zip(self.output_convs, laterals)]
+
+        target_size = outputs[1].shape[2:]
+        aligned = []
+        for out in outputs:
+            if out.shape[2:] != target_size:
+                out = F.interpolate(
+                    out, size=target_size, mode='bilinear', align_corners=False,
+                )
+            aligned.append(out)
+
+        return self.fusion(torch.cat(aligned, dim=1))

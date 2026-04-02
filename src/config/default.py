@@ -7,7 +7,7 @@ _CN.OUTPUT = ''
 _CN.OETR = CN()
 _CN.OETR.CHECKPOINT = None
 _CN.OETR.BACKBONE_TYPE = 'ResNet'
-_CN.OETR.MODEL = 'oetr'  # options:['oetr', 'oetr_fc', 'oetr_fcos']
+_CN.OETR.MODEL = 'oetr'  # options:['oetr', 'oetr_fc', 'oetr_fcos', 'oetr_enhanced']
 _CN.OETR.NORM_INPUT = True
 
 # 1. OETR-backbone (local feature CNN) config
@@ -32,7 +32,16 @@ _CN.OETR.HEAD = CN()
 _CN.OETR.HEAD.D_MODEL = 256
 _CN.OETR.HEAD.NORM_REG_TARGETS = True
 
-# 4. OETR-fine module config
+# 4. OETR-enhanced module config (multi-scale + semantic + scale-adaptive PE)
+_CN.OETR.ENHANCED = CN()
+_CN.OETR.ENHANCED.FPN_DIM = 256
+_CN.OETR.ENHANCED.SEMANTIC_ENABLE = True
+_CN.OETR.ENHANCED.SEMANTIC_BACKBONE = 'resnet50'
+_CN.OETR.ENHANCED.SEMANTIC_FREEZE = True
+_CN.OETR.ENHANCED.SCALE_PE = True
+_CN.OETR.ENHANCED.SEM_LOSS_WEIGHT = 0.5
+
+# 5. OETR-loss module config
 _CN.OETR.LOSS = CN()
 _CN.OETR.LOSS.OIOU = False
 _CN.OETR.LOSS.CYCLE_OVERLAP = False
