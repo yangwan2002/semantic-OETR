@@ -1,0 +1,61 @@
+infer_pair.py
+  s_820391cbdb2f93::t_651f05ea8095b3 1-268
+dloc/core/overlap_features.py
+  b6236993a4485588 26
+src/model.py
+  b6236993a4485588 18-19,41-42,44,66-72,74-76,78-96,99,145-157,161-165,168-191,202-206,212,215,219-220,226-231,246,358-394,396-484,486-487,506-685,687-701,709-711,725-736,746-753,761-762,840-884,887,891-893,896-906,931-976,978-1040
+src/models/semantic_fusion.py
+  b6236993a4485588 7,9-13,16-17,108-244
+.gitignore
+  s_820391cbdb2f93::t_f9b4002793451c 1-35
+configs/baseline/oetr_config.py
+  b6236993a4485588 3,10,13-24,39
+src/models/backbone.py
+  b6236993a4485588 133-134
+configs/baseline/carla_fullimg_uavrelay_soft_planar_finetune_pe_infer.py
+  s_820391cbdb2f93::t_2eec2a76e6b960 3,5,10-11,13-20
+README.md
+  s_820391cbdb2f93::t_ea8b6f132cda76 1-5,8,11-22,24-31,33,35,37-38,40-44,47,49,51,54-55,58,60,62-91,94-96,98,100-108,110,112-113,115-124,128,132-135
+train.py
+  b6236993a4485588 22,25-26,69,72-79
+requirements-infer.txt
+  s_820391cbdb2f93::t_49575f54aa5a22 1-10
+dloc/core/overlaps/oetr.py
+  b6236993a4485588 27
+src/config/default.py
+  b6236993a4485588 8,10-12,15,21,23,27-33,36-43,45,49-56,72-77,92
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.10-trip",
+  "base_commit_sha": "c90c7fb23ade3e6091245bae3fb90ef18ce2c9cd",
+  "prompts": {
+    "b6236993a4485588": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "21c9f9f3-2695-4f38-9695-d1a52a2294fe",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "yangwan <yangwan@trip.com>",
+      "total_additions": 2935,
+      "total_deletions": 3023,
+      "accepted_lines": 824,
+      "overriden_lines": 0
+    }
+  },
+  "humans": {
+    "h_687d5ed0308163": {
+      "author": "yangwan <yangwan@trip.com>"
+    }
+  },
+  "sessions": {
+    "s_820391cbdb2f93": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "d596d94c-afa1-4ee0-8468-be1d6bdf5948",
+        "model": "default"
+      },
+      "human_author": "yangwan <yangwan@trip.com>"
+    }
+  }
+}
