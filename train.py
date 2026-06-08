@@ -19,10 +19,11 @@ from torch.utils.tensorboard import SummaryWriter
 
 from src.config.default import get_cfg_defaults
 from src.datasets import build_dataloader
-from src.model import build_detectors
+from src.model import build_detectors, load_legacy_oetr_checkpoint
 from src.utils.utils import (get_logger, loss_info,
                              visualize_centerness_overlap_gt,
-                             visualize_overlap_gt)
+                             visualize_overlap_gt,
+                             visualize_overlap_mask_gt)
 from src.utils.validation import evaluate
 
 # os.environ["OMP_NUM_THREADS"] = "1"
@@ -65,10 +66,17 @@ def main(opt):
     training_dataset = build_dataloader(cfg.DATASET.TRAIN,
                                         cfg.DATASET.DATA_ROOT)
     model = build_detectors(cfg.OETR).to(device)
+    checkpoint_load_info = None
 
     if cfg.OETR.CHECKPOINT:
-        model.load_state_dict(
-            torch.load(cfg.OETR.CHECKPOINT, map_location='cpu'))
+        checkpoint_load_info = model.load_state_dict(
+            torch.load(cfg.OETR.CHECKPOINT, map_location='cpu'),
+            strict=False,
+        )
+    elif cfg.OETR.LEGACY_CHECKPOINT:
+        load_legacy_oetr_checkpoint(
+            model, cfg.OETR.LEGACY_CHECKPOINT, verbose=(opt.local_rank == 0),
+        )
 
     model = torch.nn.parallel.DistributedDataParallel(
         model, device_ids=[opt.local_rank], find_unused_parameters=True)
@@ -83,6 +91,12 @@ def main(opt):
             os.path.join(opt.save_path, ('{}.log'.format(timestamp))))
         logger.info(opt)
         logger.info(cfg)
+        if checkpoint_load_info is not None:
+            logger.info(
+                'Loaded checkpoint with strict=False, missing=%s unexpected=%s',
+                checkpoint_load_info.missing_keys,
+                checkpoint_load_info.unexpected_keys,
+            )
         logger.info(model)
 
     if opt.validation:
@@ -151,7 +165,35 @@ def main(opt):
                         'train_{}_{}_'.format(epoch, i) +
                         batch['file_name'][0],
                     )
-                    if 'pred_center1' in data.keys():
+                    if 'pred_mask1' in data and 'gt_mask1' in batch:
+                        pred_mask1 = (
+                            data['pred_mask1'][0, 0].detach().cpu().numpy()
+                            >= 0.5
+                        ).astype(np.uint8)
+                        pred_mask2 = (
+                            data['pred_mask2'][0, 0].detach().cpu().numpy()
+                            >= 0.5
+                        ).astype(np.uint8)
+                        gt_mask1 = batch['gt_mask1'][0].cpu().numpy().astype(
+                            np.uint8,
+                        )
+                        gt_mask2 = batch['gt_mask2'][0].cpu().numpy().astype(
+                            np.uint8,
+                        )
+                        visualize_overlap_mask_gt(
+                            batch['image1'][0].cpu().numpy() * 255,
+                            bbox1,
+                            gt_bbox1,
+                            pred_mask1,
+                            gt_mask1,
+                            batch['image2'][0].cpu().numpy() * 255,
+                            bbox2,
+                            gt_bbox2,
+                            pred_mask2,
+                            gt_mask2,
+                            viz_name,
+                        )
+                    elif 'pred_center1' in data.keys():
                         visualize_centerness_overlap_gt(
                             batch['image1'][0].cpu().numpy() * 255,
                             bbox1,

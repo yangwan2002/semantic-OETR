@@ -7,7 +7,6 @@
 @Copyright:  Copyright (C) Tencent. All rights reserved.
 '''
 
-import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -128,59 +127,11 @@ class PatchEmbed(nn.Module):
         return x, H, W
 
 
-class ResnetEncoder(nn.Module):
-    def __init__(self, cfg):
-        super(ResnetEncoder, self).__init__()
-        self.num_ch_enc = np.array([64, 64, 128, 256, 512])
-        self.cfg = cfg
-        self.last_layer = cfg.BACKBONE.LAST_LAYER
-
-        resnets = {
-            18: models.resnet18,
-            34: models.resnet34,
-            50: models.resnet50,
-            101: models.resnet101,
-            152: models.resnet152
-        }
-        # pdb.set_trace()
-        encoder = resnets[cfg.BACKBONE.NUM_LAYERS](True)
-        self.encoder = encoder
-
-        self.layer0 = nn.Sequential(encoder.conv1, encoder.bn1, encoder.relu)
-        self.layer1 = nn.Sequential(encoder.maxpool, encoder.layer1)
-        self.layer2 = encoder.layer2
-        self.layer3 = encoder.layer3
-        if cfg.BACKBONE.LAYER == 'layer4':
-            self.layer4 = encoder.layer4
-        del encoder
-
-        if cfg.BACKBONE.NUM_LAYERS > 34:
-            self.num_ch_enc[1:] *= 4
-
-    def forward(self, input_image):
-        x = input_image.permute(0, 3, 1, 2).contiguous()
-        # Normalize the input colorspace
-        if self.cfg.NORM_INPUT:
-            x = (x - 0.45) / 0.225
-
-        x = self.layer0(x)
-        x = self.layer1(x)
-        x = self.layer2(x)
-        if self.cfg.BACKBONE.LAYER == 'layer3':
-            x = self.layer3(x)
-        elif self.cfg.BACKBONE.LAYER == 'layer4':
-            x = self.layer3(x)
-            x = self.layer4(x)
-
-        return x
-
-
 class MultiScaleResnetEncoder(nn.Module):
     """ResNet encoder outputting multi-scale features from layer2/3/4.
 
-    Unlike ResnetEncoder which outputs a single scale, this encoder
-    provides a feature hierarchy for the Feature Pyramid Network,
-    enabling cross-scale feature alignment.
+    Provides a feature hierarchy for the Feature Pyramid Network,
+    enabling cross-scale feature alignment in cross-view matching.
     """
 
     def __init__(self, cfg):

@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# Local temp / probes
+.codex_tmp/
+.codex_tmp_*/
+_probe_*.py
+*.bak_*
+texput.log
+
+# Training / inference artifacts
+OUTPUT/
+outputs/
+run_logs/
+eval_examples/
+infer_*/
+weights/
+assets/*.pth
+*.pth
+*.ckpt
+*.out
+*.log
+
+# LaTeX build
+doc/build/
+*.aux
+*.log
+*.out
+
+# IDE
+.idea/
+.vscode/

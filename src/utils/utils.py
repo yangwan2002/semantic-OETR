@@ -151,6 +151,36 @@ def visualize_overlap_gt(image1,
     return left, right
 
 
+def overlay_binary_mask(image, mask, color, alpha=0.35):
+    out = image.astype(np.float32).copy()
+    mask = mask.astype(bool)
+    color = np.array(color, dtype=np.float32)
+    out[mask] = out[mask] * (1.0 - alpha) + color * alpha
+    return out
+
+
+def visualize_overlap_mask_gt(image1,
+                              bbox1,
+                              gt1,
+                              pred_mask1,
+                              gt_mask1,
+                              image2,
+                              bbox2,
+                              gt2,
+                              pred_mask2,
+                              gt_mask2,
+                              output):
+    left, right = visualize_overlap_gt(
+        image1, bbox1, gt1, image2, bbox2, gt2, output, False,
+    )
+    left = overlay_binary_mask(left, gt_mask1, (0, 255, 0), alpha=0.28)
+    left = overlay_binary_mask(left, pred_mask1, (255, 0, 0), alpha=0.28)
+    right = overlay_binary_mask(right, gt_mask2, (0, 255, 0), alpha=0.28)
+    right = overlay_binary_mask(right, pred_mask2, (0, 0, 255), alpha=0.28)
+    viz = cv2.hconcat([left, right])
+    cv2.imwrite(output, viz)
+
+
 def visualize_centerness_overlap_gt(image1, bbox1, gt1, center1, image2, bbox2,
                                     gt2, center2, output):
 

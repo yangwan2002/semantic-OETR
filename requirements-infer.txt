@@ -1,0 +1,10 @@
+# Minimal dependencies for local OETR pair inference (infer_pair.py).
+numpy
+opencv-python
+Pillow
+yacs
+einops
+timm
+kornia
+torch
+torchvision

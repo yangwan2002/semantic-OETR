@@ -8,8 +8,8 @@ from tqdm import tqdm
 
 from . import overlaps
 from .utils.base_model import dynamic_load
-from .utils.utils import (read_image, read_overlap_image, visualize_overlap,
-                          visualize_overlap_crop)
+from .utils.utils import (read_image, read_overlap_image, resize_pad_images,
+                          visualize_overlap, visualize_overlap_crop)
 """
 A set of standard configurations that can be directly selected from the command
 line using their name. Each is a dictionary with the following entries:
@@ -18,29 +18,26 @@ line using their name. Each is a dictionary with the following entries:
     - preprocessing: how to preprocess the images read from disk.
 """
 confs = {
-    'oetr_imc': {
-        'output': 'oetr',
-        'model': {
-            'name': 'oetr',
-            'model': 'oetr',
-            'stride': 32,
-            'last_layer': 1024,
-            'num_layers': 50,
-            'layer': 'layer3',
-            'weights': 'oetr/sacdetrnet_mf_epoch24_2x4_best.pth',
-        },
-    },
     'oetr': {
         'output': 'oetr',
         'model': {
             'name': 'oetr',
-            'model': 'oetr',
-            'stride': 32,
-            'last_layer': 1024,
             'num_layers': 50,
-            'layer': 'layer3',
-            'weights': 'oetr/sacdetrnet_mf_epoch30_2x4_cyclecenter.pth',
-            # "weights": "oetr/temp.pth",
+            'weights': 'oetr/oetr.pth',
+        },
+        'preprocessing': {
+            'resize_mode': 'square',
+        },
+    },
+    'oetr_fullimg': {
+        'output': 'oetr_fullimg',
+        'model': {
+            'name': 'oetr',
+            'num_layers': 50,
+            'weights': 'oetr/oetr.pth',
+        },
+        'preprocessing': {
+            'resize_mode': 'pad',
         },
     },
 }
@@ -59,6 +56,8 @@ def process(
     inp1,
     overlap_inp1,
     overlap_scales1,
+    overlap_mask0=None,
+    overlap_mask1=None,
     dataset_name='googleurban',
     overlap=True,
     warp_origin=True,
@@ -97,6 +96,8 @@ def process(
                 'overlap_image1': overlap_inp1,
                 'overlap_scales0': overlap_scales0,
                 'overlap_scales1': overlap_scales1,
+                'overlap_mask0': overlap_mask0,
+                'overlap_mask1': overlap_mask1,
                 'dataset_name': dataset_name,
             },
             overlap,
@@ -110,6 +111,8 @@ def process(
                 'overlap_image1': overlap_inp1,
                 'overlap_scales0': overlap_scales0,
                 'overlap_scales1': overlap_scales1,
+                'overlap_mask0': overlap_mask0,
+                'overlap_mask1': overlap_mask1,
                 'dataset_name': dataset_name,
             },
             overlap,
@@ -155,6 +158,44 @@ def process(
     )
 
 
+def _load_overlap_inputs(
+    input_dir,
+    name,
+    device,
+    resize,
+    resize_float,
+    gray,
+    align,
+    resize_mode,
+):
+    path = os.path.join(input_dir, name)
+    if resize_mode == 'pad':
+        image, overlap_inp, inp, overlap_scales, overlap_mask = resize_pad_images(
+            path,
+            device,
+            resize,
+            0,
+            resize_float,
+            gray,
+            size_divisor=32,
+            overlap=True,
+        )
+        scales = (1.0, 1.0)
+        return image, overlap_inp, inp, scales, overlap_scales, overlap_mask
+
+    image, overlap_inp, inp, scales, overlap_scales = read_overlap_image(
+        path,
+        device,
+        resize,
+        0,
+        resize_float,
+        gray,
+        align,
+        True,
+    )
+    return image, overlap_inp, inp, scales, overlap_scales, None
+
+
 def preprocess_overlap_pipeline(
     input,
     name0,
@@ -170,12 +211,43 @@ def preprocess_overlap_pipeline(
     with_desc=False,
     warp_origin=True,
 ):
-    image0, overlap_inp0, inp0, scales0, overlap_scales0 = read_overlap_image(
-        os.path.join(input, name0), device, resize, 0, resize_float, gray,
-        align, True)
-    image1, overlap_inp1, inp1, scales1, overlap_scales1 = read_overlap_image(
-        os.path.join(input, name1), device, resize, 0, resize_float, gray,
-        align, True)
+    resize_mode = config.get('overlaper', {}).get(
+        'preprocessing', {},
+    ).get('resize_mode', 'square')
+    (
+        image0,
+        overlap_inp0,
+        inp0,
+        scales0,
+        overlap_scales0,
+        overlap_mask0,
+    ) = _load_overlap_inputs(
+        input,
+        name0,
+        device,
+        resize,
+        resize_float,
+        gray,
+        align,
+        resize_mode,
+    )
+    (
+        image1,
+        overlap_inp1,
+        inp1,
+        scales1,
+        overlap_scales1,
+        overlap_mask1,
+    ) = _load_overlap_inputs(
+        input,
+        name1,
+        device,
+        resize,
+        resize_float,
+        gray,
+        align,
+        resize_mode,
+    )
     if image0 is None or image1 is None:
         raise ValueError('Problem reading image pair: {}/{} {}/{}'.format(
             input, name0, input, name1))
@@ -208,6 +280,8 @@ def preprocess_overlap_pipeline(
         inp1,
         overlap_inp1,
         overlap_scales1,
+        overlap_mask0,
+        overlap_mask1,
         dataset_name,
         warp_origin=warp_origin,
     )
@@ -239,6 +313,8 @@ def preprocess_overlap_pipeline(
             inp1,
             overlap_inp1,
             overlap_scales1,
+            overlap_mask0,
+            overlap_mask1,
             dataset_name,
             False,
         )
@@ -275,23 +351,50 @@ def main(conf, opt):
             continue
         name1, name2 = pair[:2]
         # Load the image pair.
-        image1, inp1, _ = read_image(
-            os.path.join(opt.input_dir, name1),
-            device,
-            opt.resize,
-            0,
-            opt.resize_float,
-            overlap=True,
-        )
-        image2, inp2, _ = read_image(
-            os.path.join(opt.input_dir, name2),
-            device,
-            opt.resize,
-            0,
-            opt.resize_float,
-            overlap=True,
-        )
-        box1, box2 = model({'image0': inp1, 'image1': inp2})
+        resize_mode = conf.get('preprocessing', {}).get('resize_mode', 'square')
+        if resize_mode == 'pad':
+            image1, inp1, _, _, mask1 = resize_pad_images(
+                os.path.join(opt.input_dir, name1),
+                device,
+                opt.resize,
+                0,
+                opt.resize_float,
+                size_divisor=32,
+                overlap=True,
+            )
+            image2, inp2, _, _, mask2 = resize_pad_images(
+                os.path.join(opt.input_dir, name2),
+                device,
+                opt.resize,
+                0,
+                opt.resize_float,
+                size_divisor=32,
+                overlap=True,
+            )
+            box1, box2 = model({
+                'image0': inp1,
+                'image1': inp2,
+                'mask0': mask1,
+                'mask1': mask2,
+            })
+        else:
+            image1, inp1, _ = read_image(
+                os.path.join(opt.input_dir, name1),
+                device,
+                opt.resize,
+                0,
+                opt.resize_float,
+                overlap=True,
+            )
+            image2, inp2, _ = read_image(
+                os.path.join(opt.input_dir, name2),
+                device,
+                opt.resize,
+                0,
+                opt.resize_float,
+                overlap=True,
+            )
+            box1, box2 = model({'image0': inp1, 'image1': inp2})
         name1 = name1.split('/')[-1]
         name2 = name2.split('/')[-1]
         output = os.path.join(opt.output_dir, name1 + '-' + name2)

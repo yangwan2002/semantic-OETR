@@ -381,8 +381,9 @@ def resize_pad_images(
     mask = np.zeros(
         (int(pad_scale[1] / size_divisor), int(pad_scale[0] / size_divisor)),
         dtype=bool)
-    mask[:int(img_resize.shape[0] / size_divisor), :int(img_resize.shape[1] /
-                                                        size_divisor), ] = True
+    valid_h = int(math.ceil(float(img_resize.shape[0]) / size_divisor))
+    valid_w = int(math.ceil(float(img_resize.shape[1]) / size_divisor))
+    mask[:valid_h, :valid_w] = True
     if grayscale:
         image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         inp = image[None, None]

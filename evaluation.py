@@ -74,10 +74,14 @@ class Matching(torch.nn.Module):
             data['overlap_scales1'] = torch.tensor(data['overlap_scales1'] +
                                                    data['overlap_scales1'],
                                                    device=self.device)
-            bbox0, bbox1 = self.overlap({
+            overlap_data = {
                 'image0': data['overlap_image0'],
                 'image1': data['overlap_image1']
-            })
+            }
+            if 'overlap_mask0' in data and 'overlap_mask1' in data:
+                overlap_data['mask0'] = data['overlap_mask0']
+                overlap_data['mask1'] = data['overlap_mask1']
+            bbox0, bbox1 = self.overlap(overlap_data)
 
             bbox0 = bbox0 * data['overlap_scales0']
             bbox1 = bbox1 * data['overlap_scales1']

@@ -14,10 +14,7 @@ from src.model import build_detectors
 
 class OETR(BaseModel):
     default_conf = {
-        'model': 'oetr',
         'num_layers': 50,
-        'stride': 32,
-        'last_layer': 1024,
         'weights': 'oetr.pth',
     }
     required_inputs = [
@@ -27,14 +24,10 @@ class OETR(BaseModel):
 
     def build_cfg(self, conf):
         cfg = get_cfg_defaults()
-        cfg.OETR.MODEL = conf['model']
-        cfg.OETR.BACKBONE.STRIDE = conf['stride']
-        cfg.OETR.BACKBONE.LAYER = conf['layer']
-        cfg.OETR.BACKBONE.LAST_LAYER = conf['last_layer']
+        cfg.OETR.BACKBONE.NUM_LAYERS = conf['num_layers']
         return cfg
 
     def _init(self, conf, model_path):
-        # pdb.set_trace()
         self.conf = {**self.default_conf, **conf}
         self.cfg = self.build_cfg(self.conf)
         self.net = build_detectors(self.cfg.OETR)
@@ -42,5 +35,10 @@ class OETR(BaseModel):
         self.net.load_state_dict(torch.load(model_file))
 
     def _forward(self, data):
-        box1, box2 = self.net.forward_dummy(data['image0'], data['image1'])
+        box1, box2 = self.net.forward_dummy(
+            data['image0'],
+            data['image1'],
+            data.get('mask0'),
+            data.get('mask1'),
+        )
         return box1, box2

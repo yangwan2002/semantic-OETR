@@ -236,11 +236,58 @@ class IouOverlapLoss(nn.Module):
 
 
 class MaskOverlapLoss(nn.Module):
-    def __init__(self):
+    def __init__(self,
+                 bce_weight=1.0,
+                 dice_weight=1.0,
+                 pos_weight_max=1.0,
+                 eps=1e-6):
         super(MaskOverlapLoss, self).__init__()
+        self.bce_weight = bce_weight
+        self.dice_weight = dice_weight
+        self.pos_weight_max = pos_weight_max
+        self.eps = eps
 
-    def forward(self):
-        pass
+    def forward(self, pred_logits, target, valid_mask=None):
+        if target.dim() == 3:
+            target = target.unsqueeze(1)
+        target = target.float()
+
+        if valid_mask is not None and valid_mask.dim() == 3:
+            valid_mask = valid_mask.unsqueeze(1)
+        if valid_mask is not None:
+            valid_mask = valid_mask.float()
+
+        pos_weight = None
+        if self.pos_weight_max > 1.0:
+            if valid_mask is not None:
+                pos_pixels = (target * valid_mask).sum(dim=(1, 2, 3))
+                neg_pixels = ((1.0 - target) * valid_mask).sum(dim=(1, 2, 3))
+            else:
+                pos_pixels = target.sum(dim=(1, 2, 3))
+                neg_pixels = (1.0 - target).sum(dim=(1, 2, 3))
+            pos_weight = (neg_pixels / pos_pixels.clamp(min=1.0)).clamp(
+                min=1.0, max=self.pos_weight_max,
+            ).view(-1, 1, 1, 1).detach()
+
+        bce = F.binary_cross_entropy_with_logits(
+            pred_logits, target, reduction='none', pos_weight=pos_weight,
+        )
+        if valid_mask is not None:
+            denom = valid_mask.sum().clamp(min=1.0)
+            bce = (bce * valid_mask).sum() / denom
+        else:
+            bce = bce.mean()
+
+        pred_prob = torch.sigmoid(pred_logits)
+        if valid_mask is not None:
+            pred_prob = pred_prob * valid_mask
+            target = target * valid_mask
+
+        intersection = (pred_prob * target).sum(dim=(1, 2, 3))
+        union = pred_prob.sum(dim=(1, 2, 3)) + target.sum(dim=(1, 2, 3))
+        dice = 1.0 - (2.0 * intersection + self.eps) / (union + self.eps)
+        dice = dice.mean()
+        return self.bce_weight * bce + self.dice_weight * dice
 
 
 class CycleOverlapLoss(nn.Module):

@@ -1,78 +1,135 @@
-# Guide Local Feature Matching by Overlap Estimation
-We introduce OETR, a neural network for overlap area estimation of image pairs, accepted by AAAI-2022. We are completing a series of code integration for image registration, including a series of feature point extraction and matching methods.
+# semantic-OETR
+
+基于 [OETR](https://github.com/AttentiveSon/OETR)（AAAI 2022）扩展的空天地 relay **重叠区域估计**模型，面向 CARLA-Air 实验：在原始 bbox 回归基础上，增加稠密重叠 mask 预测、可选 DINOv2 语义融合，以及缓解 UAV/UGV 与 relay 尺度差异的 Position Encoding（PE）。
+
+原始 OETR 使用 Transformer 估计图像对的重叠框；本仓库在其上增加了 mask head、soft+planar GT 监督，以及 UAV/UGV relay 微调配置，用于论文中的空天地特征匹配与融合流程。
 
 <p align="center">
-  <img src="doc/network.png" width="60%"/></a>
+  <img src="doc/network.png" width="60%"/>
 </p>
 
-## Abstract
-Local image feature matching under prominent appearance, viewpoint, and distance changes is challenging yet important. Conventional methods detect and match tentative local features across the whole images, with heuristic consistency checks to guarantee reliable matches. In this paper, we introduce a novel Overlap Estimation method conditioned on image pairs with TRansformer, named OETR, to constrain local feature matching in the commonly visible region. OETR performs overlap estimation in a two-step process of feature correlation and then overlap regression. As a preprocessing module, OETR can be plugged into any existing local feature detection and matching pipeline to mitigate potential view angle or scale variance. Intensive experiments show that OETR can substantially boost state-of-the-art local feature matching performance, especially for image pairs with small shared regions.
+## 本仓库新增内容
 
+| 模块 | 说明 |
+|------|------|
+| **Mask head** | 在 bbox 回归之外，输出稠密重叠 mask（BCE + Dice） |
+| **SemDINO 融合** | 可选 `dinov2_vitb14` 特征，配合 `mask_align` 语义损失 |
+| **Scale PE** | 可学习位置编码，缓解 UAV–relay / UGV–relay 尺度不一致 |
+| **CARLA 数据加载** | `carla_fullimage_pairs`：全图 relay 图像对 + mask |
+| **Soft+planar GT** | 在 soft overlap + planar depth GT 上微调（UAV / UGV 两支） |
+| **推理脚本** | `infer_pair.py`：任意图像对的 bbox + mask 导出 |
 
-## Repository Overview
-The repository is structured as follows:
-- assets/: Some sample files.
-- configs/: Training-related configuration files.
-- dataset/: The directory of the datastore.
-- dloc/: Inference pipeline implementation.
-- doc/: Related documentation.
-- scripts/: Execute scripts related to training and inference.
-- src/: OETR implementation source code.
-- third_party/: Some algorithms related to the inference part.
-- weights/: Download the trained model weights file to the `weights` folder.
+## 目录结构
 
-## Requirements
-- Torch >= 1.6.0
-- Torchvision >= 0.7.0
-- Python == 3.6
-
-For training and inference, all supported algorithm dependencies are presented in [requirements.txt](requirements.txt).
 ```
-pip install requirements.txt
+configs/baseline/     # OETR 与 CARLA 训练配置
+dloc/                 # 与定位 / 匹配流水线集成的 overlap 模块
+infer_pair.py         # 独立图像对推理入口
+scripts/              # UAV / UGV soft+planar PE 训练脚本
+src/                  # 模型、损失、数据集、验证逻辑
+weights/              # 权重放这里（不纳入 git）
 ```
 
+## 环境依赖
 
-## Datasets
-Generally, two parts of data are needed for OETR, the original training Megadepth datasets and the validation for relative pose estimation datasets.
+训练（建议 GPU 服务器）：
 
-### Training on Megadepth
-For the MegaDepth dataset, we use depth maps provided in the [original MegaDepth dataset](https://www.cs.cornell.edu/projects/megadepth/) as well as undistorted images, corresponding camera intrinsic, and extrinsic preprocessed by [D2-Net](https://github.com/mihaidusmanu/d2-net#downloading-and-preprocessing-the-megadepth-dataset). You can download them separately from the following links.
-- [MegaDepth undistorted images and processed depths](https://www.cs.cornell.edu/projects/megadepth/dataset/Megadepth_v1/MegaDepth_v1.tar.gz)
-    - Note that we only use depth maps.
-    - Path of the download data will be referred to as `/path/to/megadepth`
-- [D2-Net preprocessed images](https://drive.google.com/drive/folders/1hxpOsqOZefdrba_BqnW490XpNX_LgXPB)
-    - Images are undistorted manually in D2-Net since the undistorted images from MegaDepth do not come with corresponding intrinsics.
-    - Path of the download data will be referred to as `/path/to/megadepth_d2net`
-
-In order to avoid online calculation, we complete the calculation of the groundtruth of the overlap box offline through image depth, camera intrinsic, and extrinsic, and besides original dataset files(megadepth_train_pairs.txt and megadepth_validation_scale.txt) could be download from [here](https://drive.google.com/drive/folders/1xN56olSJIfqZ4i35ENoNeyt8Wi2m7iRA?usp=sharing), create symlinks from the downloaded datasets to:
+```bash
+pip install -r requirements.txt
 ```
+
+仅做轻量图像对推理：
+
+```bash
+pip install -r requirements-infer.txt
+```
+
+实测环境为 Python 3.10+、PyTorch 2.x。原版 OETR 文档写的是 Python 3.6；本 fork 在训练服务器上使用较新的 torch / timm / kornia 组合。
+
+## CARLA-Air 训练
+
+数据通常导出为序列目录下的 JSONL 配对列表，例如：
+
+```
+<sequence_dir>/oetr_fullimage_uavrelay_soft_planar_clean_f005/pairs_train.jsonl
+<sequence_dir>/oetr_fullimage_uavrelay_soft_planar_clean_f005/pairs_val.jsonl
+```
+
+训练前请在配置文件中修改 `DATASET.DATA_ROOT` 与 `LIST_PATH`。
+
+### 推荐配置链路
+
+1. **Mask 基线** — `configs/baseline/carla_fullimg_uavrelay_1280_clean_f005_maskhead.py`
+2. **SemDINO mask-align（最佳）** — `carla_fullimg_uavrelay_1280_clean_f005_maskhead_semdino_maskalign_v2_best.py`
+3. **+ Scale PE** — `carla_fullimg_uavrelay_1280_clean_f005_maskhead_semdino_maskalign_v2_best_pe_v1.py`
+4. **UAV soft+planar 微调** — `carla_fullimg_uavrelay_soft_planar_finetune.py`
+5. **UGV soft+planar 微调** — `carla_fullimg_ugvrelay_soft_planar_finetune.py`
+
+单卡训练示例：
+
+```bash
+cd /path/to/semantic-OETR
+python train.py configs/baseline/carla_fullimg_uavrelay_soft_planar_finetune.py
+```
+
+也可直接使用脚本：
+
+```bash
+bash scripts/train_uav_soft_planar_pe.sh
+bash scripts/train_ugv_soft_planar_pe.sh
+```
+
+权重默认保存在 `OUTPUT/OETR/checkpoints/<cfg.OUTPUT>/`。
+
+## 图像对推理
+
+```bash
+python infer_pair.py \
+  --image1 /path/to/uav.png \
+  --image2 /path/to/relay.png \
+  --checkpoint weights/carla_uavrelay_soft_planar_pe_ep11/model_epoch_11.pth \
+  --output-dir outputs/pair_demo
+```
+
+默认配置：`configs/baseline/carla_fullimg_uavrelay_soft_planar_finetune_pe_infer.py`。
+
+## 原版 OETR（MegaDepth）
+
+原版 MegaDepth 训练与验证流程仍保留，见 `configs/baseline/oetr_config.py`。
+
+### MegaDepth 数据
+
+- [MegaDepth depth maps](https://www.cs.cornell.edu/projects/megadepth/dataset/Megadepth_v1/MegaDepth_v1.tar.gz)
+- [D2-Net 预处理图像](https://drive.google.com/drive/folders/1hxpOsqOZefdrba_BqnW490XpNX_LgXPB)
+- 配对列表：[Google Drive](https://drive.google.com/drive/folders/1xN56olSJIfqZ4i35ENoNeyt8Wi2m7iRA?usp=sharing)
+
+```bash
 ln -s /path/to/megadepth/* ./dataset/megadepth
 ```
 
-### Validation on Megadepth
-As we split the MegaDepth test set (with ten scenes) into subsets according to the overlap scale ratio for image pairs. We separate overlap scales into $[1, 2), [2, 3), [3, 4), [4, +\infty)$ and combine $[2, 3), [3, 4), [4, +\infty)$ as $[2, +\infty)$ for image pairs with noticeable scale difference. All datasets could be accessed from the assets folder. It could be download validation files from [here](https://drive.google.com/drive/folders/1D0u64-SaMufpTiBVQQAg7C1NpOtQSBNs?usp=sharing).
+### 原版训练
 
-
-## Training
-Different models configs are in the configs folder, and the OETR training script is:
-``` shell
+```bash
 scripts/train.sh
 ```
-> NOTE: It uses 2 GPUs only, with smaller image sizes of 640x640. Reproduction of paper results is not guaranteed under this setup.
 
+## 定位推理流水线（hloc）
 
-## Inference pipeline
-Please refer to [README.md](dloc/README.md) and topic structure referenced by https://github.com/cvg/Hierarchical-Localization.
+见 [dloc/README.md](dloc/README.md) 与 [Hierarchical-Localization](https://github.com/cvg/Hierarchical-Localization)。
 
-## BibTex Citation
+## 引用
 
-Please consider citing our work if you use any of the ideas presented in the paper or code from this repo:
+若使用原始 OETR 方法，请引用：
 
-```
+```bibtex
 @inproceedings{chen2022guide,
   title={Guide Local Feature Matching by Overlap Estimation},
   author={Chen, Ying and Huang, Dihe and Xu, Shang and Liu, Jianlin and Liu, Yong},
-  booktitle={AAAI}},
+  booktitle={AAAI},
   year={2022}
 }
 ```
+
+## 许可证
+
+见 [license.txt](license.txt)。本仓库在原始 OETR 代码结构之上扩展，用于 CARLA-Air 相关研究。
