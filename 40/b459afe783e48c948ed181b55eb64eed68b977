@@ -1,0 +1,77 @@
+src/model.py
+  b6236993a4485588 18-19,41-42,44,66-72,74-76,78-96,177-185,205-206,226-231,484,619,640,643-685,687-699,711,725-736,884,898-906,931-976,978-1040
+.gitignore
+  s_820391cbdb2f93::t_f9b4002793451c 1-35
+configs/baseline/carla_fullimg_uavrelay_soft_planar_finetune_pe_infer.py
+  s_820391cbdb2f93::t_2eec2a76e6b960 3,5,10-11,13-20
+requirements-infer.txt
+  s_820391cbdb2f93::t_49575f54aa5a22 1-10
+configs/baseline/oetr_config.py
+  b6236993a4485588 3,10,13-24,39
+src/models/backbone.py
+  b6236993a4485588 133-134
+dloc/core/overlaps/oetr.py
+  ai_agent 38-39,43
+  b6236993a4485588 27
+src/models/semantic_fusion.py
+  b6236993a4485588 7,9-13,16-17,108-178,180-244
+src/config/default.py
+  ai_agent 23
+  b6236993a4485588 8,10-12,15,21,27,33,36-43,45,92
+dloc/core/overlap_features.py
+  b6236993a4485588 26
+  ai_agent 12,21,27,218-221,225,227,229-238,242,244,246-247,250,283-284,316-317,354-397
+README.md
+  s_820391cbdb2f93::t_7c6b627113e634 1-5,8,11-20,22,24-31,35-38,40-44,47,49,51,54-55,58,60,62-91,94,96,98,100-104,106-107,109-124,128,132-135
+infer_pair.py
+  s_820391cbdb2f93::t_651f05ea8095b3 1-268
+train.py
+  b6236993a4485588 22,76-79
+  ai_agent 75
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.10-trip",
+  "base_commit_sha": "40b459afe783e48c948ed181b55eb64eed68b977",
+  "prompts": {
+    "9cab5302210519e9": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e630c-6075-7543-ad37-42121059d66c",
+        "model": "gpt-5.5"
+      },
+      "human_author": "yangwan <yangwan@trip.com>",
+      "total_additions": 285,
+      "total_deletions": 0,
+      "accepted_lines": 285,
+      "overriden_lines": 0
+    },
+    "b6236993a4485588": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "21c9f9f3-2695-4f38-9695-d1a52a2294fe",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "yangwan <yangwan@trip.com>",
+      "total_additions": 2935,
+      "total_deletions": 3023,
+      "accepted_lines": 951,
+      "overriden_lines": 18
+    }
+  },
+  "humans": {
+    "h_687d5ed0308163": {
+      "author": "yangwan <yangwan@trip.com>"
+    }
+  },
+  "sessions": {
+    "s_820391cbdb2f93": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "d596d94c-afa1-4ee0-8468-be1d6bdf5948",
+        "model": "default"
+      },
+      "human_author": "yangwan <yangwan@trip.com>"
+    }
+  }
+}
